@@ -13,8 +13,8 @@
   },
   "arms": {
     "left": {
-      "pwm_pin": 18,
-      "limit_pin": 23,
+      "pwm_pin": 13,
+      "limit_pin": 27,
       "home_active_level": "LOW",
       "homing_reverse_pulse_us": 1350,
       "rest_forward_pulse_us": 1650,
@@ -23,7 +23,7 @@
     },
     "right": {
       "pwm_pin": 19,
-      "limit_pin": 24,
+      "limit_pin": 22,
       "home_active_level": "LOW",
       "homing_reverse_pulse_us": 1350,
       "rest_forward_pulse_us": 1650,

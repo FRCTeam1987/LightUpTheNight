@@ -32,8 +32,7 @@ class GpioHardware:
                 )
                 self.switches[arm] = Button(
                     arm_config.limit_pin,
-                    pull_up=None,
-                    active_state=arm_config.home_active_level == "HIGH",
+                    pull_up=False,
                 )
         except Exception:
             try:
@@ -43,7 +42,8 @@ class GpioHardware:
             raise
 
     def is_home(self, arm: ArmName) -> bool:
-        return self.switches[arm].is_pressed
+        signal_is_high = self.switches[arm].is_pressed
+        return signal_is_high == (self.config.arms[arm].home_active_level == "HIGH")
 
     def set_pulse_us(self, arm: ArmName, pulse_us: int) -> None:
         self.servos[arm].value = self._pulse_to_value(pulse_us)
