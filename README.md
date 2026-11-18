@@ -17,10 +17,11 @@ Edit [`config/default.json`](config/default.json) before running:
 
 - `arms.*.pwm_pin` and `arms.*.limit_pin` are BCM GPIO numbers and must all be unique. Current mapping: left PWM GPIO13 / limit GPIO27; right PWM GPIO19 / limit GPIO22. `gpiozero.Servo` generates the configured 50 Hz PWM pulse train on both output pins, so no additional GPIO hardware-PWM setting is needed.
 - `home_active_level` selects the GPIO level that means the arm is at its limit; the current config uses active-LOW switches. The switch output reaching each Pi input must be 3.3 V-safe.
-- `homing_reverse_pulse_us`, `rest_forward_pulse_us`, and `fault_release_pulse_us` are per-arm speed commands.
+- `motion.speed_offsets_us` defines the `slow`, `medium`, and `fast` speed levels as pulse-width offsets from neutral, in microseconds. The sample defaults are 5, 15, and 30 µs; lower offsets produce slower motion. Homing, the move to rest, and fault recovery use `slow`.
+- `motion.right_arm_speed_adjustment_us` adjusts the right arm's offset at every speed level. Positive values increase its speed; negative values reduce it. The adjustment cannot reverse direction or exceed the configured pulse range.
 - `rest_duration_s` is the per-arm timed move from home to the straight-down rest position.
-- Each preset provides a per-arm `pulse_us` speed command and `duration_s`. Tune these separately to synchronize the arms.
-- The SPARK MAX factory deadband is centered around 1500 µs. Sample movement commands are deliberately outside that deadband; confirm the configured deadband and choose appropriate speeds for your mechanism.
+- Each preset names its speed (`slow`, `medium`, or `fast`), then gives each arm a `direction` (`forward` or `reverse`) and `duration_s`. Both sample presets use `slow`; choose a speed for each new preset. Tune durations separately to synchronize the arms.
+- The SPARK MAX factory deadband is centered around 1500 µs. The sample `slow` offset may fall within that deadband and produce no motion; confirm the configured deadband and increase the offset if needed for your mechanism.
 - `sequence_interval_min_s` and `sequence_interval_max_s` select a random interval for each preset. The next preset starts only after both arms finish their current timed move and that interval has elapsed. Presets repeat in listed order.
 - Homing and switch-release timeouts stop the motors and raise an error if a switch is not reached or released. A normal-operation switch activation stops both arms, waits `fault_pause_s`, moves only triggered arms forward until their switches release, and homes both arms again.
 

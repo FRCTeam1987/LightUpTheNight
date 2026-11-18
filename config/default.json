@@ -3,6 +3,12 @@
     "min_pulse_us": 1000,
     "max_pulse_us": 2000,
     "neutral_pulse_us": 1500,
+    "speed_offsets_us": {
+      "slow": 5,
+      "medium": 15,
+      "fast": 30
+    },
+    "right_arm_speed_adjustment_us": 0,
     "frame_width_s": 0.02,
     "homing_timeout_s": 20.0,
     "fault_pause_s": 1.0,
@@ -16,44 +22,40 @@
       "pwm_pin": 13,
       "limit_pin": 27,
       "home_active_level": "LOW",
-      "homing_reverse_pulse_us": 1350,
-      "rest_forward_pulse_us": 1650,
-      "rest_duration_s": 1.0,
-      "fault_release_pulse_us": 1650
+      "rest_duration_s": 1.0
     },
     "right": {
       "pwm_pin": 19,
       "limit_pin": 22,
       "home_active_level": "LOW",
-      "homing_reverse_pulse_us": 1350,
-      "rest_forward_pulse_us": 1650,
-      "rest_duration_s": 1.0,
-      "fault_release_pulse_us": 1650
+      "rest_duration_s": 1.0
     }
   },
   "presets": [
     {
       "name": "sample_forward",
+      "speed": "slow",
       "arms": {
         "left": {
-          "pulse_us": 1650,
+          "direction": "forward",
           "duration_s": 1.0
         },
         "right": {
-          "pulse_us": 1670,
+          "direction": "forward",
           "duration_s": 1.2
         }
       }
     },
     {
       "name": "sample_return",
+      "speed": "slow",
       "arms": {
         "left": {
-          "pulse_us": 1350,
+          "direction": "reverse",
           "duration_s": 1.1
         },
         "right": {
-          "pulse_us": 1330,
+          "direction": "reverse",
           "duration_s": 0.9
         }
       }

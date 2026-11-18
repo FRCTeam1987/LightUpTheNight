@@ -106,7 +106,7 @@ class ArmController:
                 self._fail(f"{arm} arm did not reach its home switch before timeout")
             else:
                 self.hardware.set_pulse_us(
-                    arm, self.config.arms[arm].homing_reverse_pulse_us
+                    arm, self.config.motion.pulse_for(arm, "reverse", "slow")
                 )
 
         if len(self._homed) == len(ARM_NAMES):
@@ -128,7 +128,7 @@ class ArmController:
                 self._rested.add(arm)
             else:
                 self.hardware.set_pulse_us(
-                    arm, self.config.arms[arm].rest_forward_pulse_us
+                    arm, self.config.motion.pulse_for(arm, "forward", "slow")
                 )
 
         if len(self._rested) == len(ARM_NAMES):
@@ -147,7 +147,9 @@ class ArmController:
         for arm in ARM_NAMES:
             command = self._preset.arms[arm]
             pulse_us = (
-                command.pulse_us
+                self.config.motion.pulse_for(
+                    arm, command.direction, self._preset.speed
+                )
                 if command.duration_s > 0
                 else self.config.motion.neutral_pulse_us
             )
@@ -169,7 +171,12 @@ class ArmController:
                 self.hardware.set_pulse_us(arm, self.config.motion.neutral_pulse_us)
             else:
                 move_complete = False
-                self.hardware.set_pulse_us(arm, command.pulse_us)
+                self.hardware.set_pulse_us(
+                    arm,
+                    self.config.motion.pulse_for(
+                        arm, command.direction, self._preset.speed
+                    ),
+                )
 
         if move_complete and now >= self._next_transition_at:
             next_index = (self._preset_index + 1) % len(self.config.presets)
@@ -205,7 +212,7 @@ class ArmController:
         self._release_started = {arm: now for arm in self._release_targets}
         for arm in self._release_targets:
             self.hardware.set_pulse_us(
-                arm, self.config.arms[arm].fault_release_pulse_us
+                arm, self.config.motion.pulse_for(arm, "forward", "slow")
             )
 
     def _step_fault_release(self, now: float) -> None:
@@ -218,7 +225,7 @@ class ArmController:
             self._release_targets.add(arm)
             self._release_started[arm] = now
             self.hardware.set_pulse_us(
-                arm, self.config.arms[arm].fault_release_pulse_us
+                arm, self.config.motion.pulse_for(arm, "forward", "slow")
             )
         for arm in tuple(self._release_targets):
             if not self.hardware.is_home(arm):
@@ -231,7 +238,7 @@ class ArmController:
                 self._fail(f"{arm} arm limit switch did not release before timeout")
             else:
                 self.hardware.set_pulse_us(
-                    arm, self.config.arms[arm].fault_release_pulse_us
+                    arm, self.config.motion.pulse_for(arm, "forward", "slow")
                 )
 
         if not self._release_targets:

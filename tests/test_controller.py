@@ -31,13 +31,15 @@ class FakeHardware:
 
 def make_config() -> AppConfig:
     arms = {
-        "left": ArmConfig(18, 23, "LOW", 1100, 1550, 1.0, 1550),
-        "right": ArmConfig(19, 24, "LOW", 1100, 1550, 2.0, 1550),
+        "left": ArmConfig(18, 23, "LOW", 1.0),
+        "right": ArmConfig(19, 24, "LOW", 2.0),
     }
     motion = MotionConfig(
         min_pulse_us=1000,
         max_pulse_us=2000,
         neutral_pulse_us=1500,
+        speed_offsets_us={"slow": 10, "medium": 50, "fast": 100},
+        right_arm_speed_adjustment_us=10,
         frame_width_s=0.02,
         homing_timeout_s=5.0,
         fault_pause_s=1.0,
@@ -49,16 +51,18 @@ def make_config() -> AppConfig:
     presets = (
         Preset(
             "first",
+            "fast",
             {
-                "left": ArmCommand(1600, 2.0),
-                "right": ArmCommand(1610, 3.5),
+                "left": ArmCommand("forward", 2.0),
+                "right": ArmCommand("forward", 3.5),
             },
         ),
         Preset(
             "second",
+            "fast",
             {
-                "left": ArmCommand(1400, 1.0),
-                "right": ArmCommand(1410, 1.0),
+                "left": ArmCommand("reverse", 1.0),
+                "right": ArmCommand("reverse", 1.0),
             },
         ),
     )
@@ -85,22 +89,22 @@ class ArmControllerTests(unittest.TestCase):
 
     def test_homes_both_then_positions_arms_for_rest(self) -> None:
         self.controller.start(now=0)
-        self.assertEqual(self.hardware.pulses, {"left": 1100, "right": 1100})
+        self.assertEqual(self.hardware.pulses, {"left": 1490, "right": 1480})
 
         self.hardware.home["left"] = True
         self.controller.step(now=0.5)
         self.assertEqual(self.hardware.pulses["left"], 1500)
-        self.assertEqual(self.hardware.pulses["right"], 1100)
+        self.assertEqual(self.hardware.pulses["right"], 1480)
 
         self.hardware.home["right"] = True
         self.controller.step(now=1.0)
         self.assertEqual(self.controller.state, ControllerState.RESTING)
         self.hardware.home.update(left=False, right=False)
         self.controller.step(now=1.5)
-        self.assertEqual(self.hardware.pulses, {"left": 1550, "right": 1550})
+        self.assertEqual(self.hardware.pulses, {"left": 1510, "right": 1520})
         self.controller.step(now=2.0)
         self.assertEqual(self.hardware.pulses["left"], 1500)
-        self.assertEqual(self.hardware.pulses["right"], 1550)
+        self.assertEqual(self.hardware.pulses["right"], 1520)
         self.controller.step(now=3.0)
         self.assertEqual(self.controller.state, ControllerState.SEQUENCING)
         self.assertEqual(self.hardware.pulses, {"left": 1600, "right": 1610})
@@ -113,7 +117,7 @@ class ArmControllerTests(unittest.TestCase):
         self.assertEqual(self.hardware.pulses, {"left": 1500, "right": 1610})
         self.controller.step(now=6.1)
         self.assertEqual(self.controller.state, ControllerState.SEQUENCING)
-        self.assertEqual(self.hardware.pulses, {"left": 1400, "right": 1410})
+        self.assertEqual(self.hardware.pulses, {"left": 1400, "right": 1390})
 
     def test_limit_fault_stops_then_releases_and_rehomes(self) -> None:
         self.enter_sequence()
@@ -126,12 +130,12 @@ class ArmControllerTests(unittest.TestCase):
         self.assertEqual(self.controller.state, ControllerState.FAULT_PAUSE)
         self.controller.step(now=4.2)
         self.assertEqual(self.controller.state, ControllerState.FAULT_RELEASE)
-        self.assertEqual(self.hardware.pulses, {"left": 1550, "right": 1500})
+        self.assertEqual(self.hardware.pulses, {"left": 1510, "right": 1500})
 
         self.hardware.home["left"] = False
         self.controller.step(now=4.3)
         self.assertEqual(self.controller.state, ControllerState.HOMING)
-        self.assertEqual(self.hardware.pulses, {"left": 1100, "right": 1100})
+        self.assertEqual(self.hardware.pulses, {"left": 1490, "right": 1480})
 
     def test_homing_timeout_stops_motors_and_raises(self) -> None:
         self.controller.start(now=0)

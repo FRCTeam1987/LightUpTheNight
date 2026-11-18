@@ -9,6 +9,9 @@ from typing import Literal
 
 ArmName = Literal["left", "right"]
 ARM_NAMES: tuple[ArmName, ArmName] = ("left", "right")
+Speed = Literal["slow", "medium", "fast"]
+SPEED_NAMES: tuple[Speed, Speed, Speed] = ("slow", "medium", "fast")
+Direction = Literal["forward", "reverse"]
 
 
 @dataclass(frozen=True)
@@ -16,21 +19,19 @@ class ArmConfig:
     pwm_pin: int
     limit_pin: int
     home_active_level: Literal["LOW", "HIGH"]
-    homing_reverse_pulse_us: int
-    rest_forward_pulse_us: int
     rest_duration_s: float
-    fault_release_pulse_us: int
 
 
 @dataclass(frozen=True)
 class ArmCommand:
-    pulse_us: int
+    direction: Direction
     duration_s: float
 
 
 @dataclass(frozen=True)
 class Preset:
     name: str
+    speed: Speed
     arms: dict[ArmName, ArmCommand]
 
 
@@ -39,6 +40,8 @@ class MotionConfig:
     min_pulse_us: int
     max_pulse_us: int
     neutral_pulse_us: int
+    speed_offsets_us: dict[Speed, int]
+    right_arm_speed_adjustment_us: int
     frame_width_s: float
     homing_timeout_s: float
     fault_pause_s: float
@@ -46,6 +49,13 @@ class MotionConfig:
     sequence_interval_min_s: float
     sequence_interval_max_s: float
     control_period_s: float
+
+    def pulse_for(self, arm: ArmName, direction: Direction, speed: Speed) -> int:
+        offset = self.speed_offsets_us[speed]
+        if arm == "right":
+            offset += self.right_arm_speed_adjustment_us
+        direction_sign = 1 if direction == "forward" else -1
+        return self.neutral_pulse_us + direction_sign * offset
 
 
 @dataclass(frozen=True)
@@ -94,16 +104,50 @@ def _pulse(values: dict[str, object], key: str, name: str) -> int:
     return int(_number(values, key, name, integer=True))
 
 
+def _speed(value: object, name: str) -> Speed:
+    if value == "slow":
+        return "slow"
+    if value == "medium":
+        return "medium"
+    if value == "fast":
+        return "fast"
+    raise ValueError(f"{name} must be slow, medium, or fast")
+
+
+def _direction(value: object, name: str) -> Direction:
+    if value == "forward":
+        return "forward"
+    if value == "reverse":
+        return "reverse"
+    raise ValueError(f"{name} must be forward or reverse")
+
+
 def load_config(path: Path) -> AppConfig:
     """Load a JSON config file and reject unsafe or inconsistent settings."""
     with path.open(encoding="utf-8") as config_file:
         raw = _object(json.load(config_file), "config")
 
     raw_motion = _object(raw.get("motion"), "motion")
+    raw_speed_offsets = _object(
+        raw_motion.get("speed_offsets_us"), "motion.speed_offsets_us"
+    )
+    speed_offsets = {
+        speed: _pulse(raw_speed_offsets, speed, "motion.speed_offsets_us")
+        for speed in SPEED_NAMES
+    }
     motion = MotionConfig(
         min_pulse_us=_pulse(raw_motion, "min_pulse_us", "motion"),
         max_pulse_us=_pulse(raw_motion, "max_pulse_us", "motion"),
         neutral_pulse_us=_pulse(raw_motion, "neutral_pulse_us", "motion"),
+        speed_offsets_us=speed_offsets,
+        right_arm_speed_adjustment_us=int(
+            _number(
+                raw_motion,
+                "right_arm_speed_adjustment_us",
+                "motion",
+                integer=True,
+            )
+        ),
         frame_width_s=_positive_number(raw_motion, "frame_width_s", "motion"),
         homing_timeout_s=_positive_number(raw_motion, "homing_timeout_s", "motion"),
         fault_pause_s=_positive_number(
@@ -124,6 +168,33 @@ def load_config(path: Path) -> AppConfig:
         raise ValueError("motion.min_pulse_us must be less than max_pulse_us")
     if not motion.min_pulse_us <= motion.neutral_pulse_us <= motion.max_pulse_us:
         raise ValueError("motion.neutral_pulse_us must be within the pulse range")
+    if any(motion.speed_offsets_us[speed] <= 0 for speed in SPEED_NAMES):
+        raise ValueError("motion.speed_offsets_us values must be positive")
+    if not (
+        motion.speed_offsets_us["slow"]
+        < motion.speed_offsets_us["medium"]
+        < motion.speed_offsets_us["fast"]
+    ):
+        raise ValueError(
+            "motion.speed_offsets_us values must increase from slow to fast"
+        )
+    for arm_name in ARM_NAMES:
+        for speed in SPEED_NAMES:
+            offset = motion.speed_offsets_us[speed]
+            if arm_name == "right":
+                offset += motion.right_arm_speed_adjustment_us
+            if offset < 0:
+                raise ValueError(
+                    "motion.right_arm_speed_adjustment_us must not reverse "
+                    "the right arm direction"
+                )
+            for direction in ("forward", "reverse"):
+                pulse_us = motion.neutral_pulse_us + (
+                    offset if direction == "forward" else -offset
+                )
+                _validate_pulse(
+                    pulse_us, motion, f"motion.{speed}_{arm_name}_{direction}"
+                )
     if motion.sequence_interval_min_s > motion.sequence_interval_max_s:
         raise ValueError(
             "motion.sequence_interval_min_s must not exceed sequence_interval_max_s"
@@ -156,28 +227,11 @@ def load_config(path: Path) -> AppConfig:
             pwm_pin=int(pwm_pin),
             limit_pin=int(limit_pin),
             home_active_level=home_active_level,
-            homing_reverse_pulse_us=_pulse(
-                values, "homing_reverse_pulse_us", f"arms.{arm_name}"
-            ),
-            rest_forward_pulse_us=_pulse(
-                values, "rest_forward_pulse_us", f"arms.{arm_name}"
-            ),
             rest_duration_s=_positive_number(
                 values, "rest_duration_s", f"arms.{arm_name}", allow_zero=True
             ),
-            fault_release_pulse_us=_pulse(
-                values, "fault_release_pulse_us", f"arms.{arm_name}"
-            ),
         )
         arms[arm_name] = arm_config
-
-    for arm_name, arm in arms.items():
-        for name, pulse in (
-            ("homing_reverse_pulse_us", arm.homing_reverse_pulse_us),
-            ("rest_forward_pulse_us", arm.rest_forward_pulse_us),
-            ("fault_release_pulse_us", arm.fault_release_pulse_us),
-        ):
-            _validate_pulse(pulse, motion, f"arms.{arm_name}.{name}")
 
     raw_presets = raw.get("presets")
     if not isinstance(raw_presets, list) or not raw_presets:
@@ -192,6 +246,7 @@ def load_config(path: Path) -> AppConfig:
         if name in preset_names:
             raise ValueError(f"preset name {name!r} is duplicated")
         preset_names.add(name)
+        speed = _speed(preset_data.get("speed"), f"presets[{index}].speed")
         raw_commands = _object(preset_data.get("arms"), f"presets[{index}].arms")
         if set(raw_commands) != set(ARM_NAMES):
             raise ValueError(f"presets[{index}].arms must define left and right")
@@ -200,14 +255,12 @@ def load_config(path: Path) -> AppConfig:
             command = _object(
                 raw_commands[arm_name], f"presets[{index}].arms.{arm_name}"
             )
-            pulse_us = _pulse(
-                command, "pulse_us", f"presets[{index}].arms.{arm_name}"
-            )
-            _validate_pulse(
-                pulse_us, motion, f"presets[{index}].arms.{arm_name}.pulse_us"
+            direction = _direction(
+                command.get("direction"),
+                f"presets[{index}].arms.{arm_name}.direction",
             )
             commands[arm_name] = ArmCommand(
-                pulse_us=pulse_us,
+                direction=direction,
                 duration_s=_positive_number(
                     command,
                     "duration_s",
@@ -215,7 +268,7 @@ def load_config(path: Path) -> AppConfig:
                     allow_zero=True,
                 ),
             )
-        presets.append(Preset(name=name, arms=commands))
+        presets.append(Preset(name=name, speed=speed, arms=commands))
 
     return AppConfig(arms=arms, motion=motion, presets=tuple(presets))
 
