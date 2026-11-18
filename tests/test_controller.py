@@ -81,11 +81,13 @@ class ArmControllerTests(unittest.TestCase):
         self.controller.start(now=0)
         self.hardware.home.update(left=True, right=True)
         self.controller.step(now=0.1)
-        self.assertEqual(self.controller.state, ControllerState.RESTING)
+        self.assertEqual(self.controller.state, ControllerState.MOVING_TO_REST)
         self.hardware.home.update(left=False, right=False)
         self.controller.step(now=1.1)
         self.assertEqual(self.hardware.pulses["left"], 1500)
         self.controller.step(now=2.1)
+        self.assertEqual(self.controller.state, ControllerState.RESTING)
+        self.controller._begin_preset(0, now=2.1)
         self.assertEqual(self.controller.state, ControllerState.SEQUENCING)
 
     def test_homes_both_then_positions_arms_for_rest(self) -> None:
@@ -99,7 +101,7 @@ class ArmControllerTests(unittest.TestCase):
 
         self.hardware.home["right"] = True
         self.controller.step(now=1.0)
-        self.assertEqual(self.controller.state, ControllerState.RESTING)
+        self.assertEqual(self.controller.state, ControllerState.MOVING_TO_REST)
         self.hardware.home.update(left=False, right=False)
         self.controller.step(now=1.5)
         self.assertEqual(self.hardware.pulses, {"left": 1510, "right": 1520})
@@ -107,8 +109,11 @@ class ArmControllerTests(unittest.TestCase):
         self.assertEqual(self.hardware.pulses["left"], 1500)
         self.assertEqual(self.hardware.pulses["right"], 1520)
         self.controller.step(now=3.0)
-        self.assertEqual(self.controller.state, ControllerState.SEQUENCING)
-        self.assertEqual(self.hardware.pulses, {"left": 1600, "right": 1610})
+        self.assertEqual(self.controller.state, ControllerState.RESTING)
+        self.assertEqual(self.hardware.pulses, {"left": 1500, "right": 1500})
+        self.controller.step(now=4.0)
+        self.assertEqual(self.controller.state, ControllerState.RESTING)
+        self.assertEqual(self.hardware.pulses, {"left": 1500, "right": 1500})
 
     def test_preset_switch_waits_for_move_and_interval(self) -> None:
         self.enter_sequence()

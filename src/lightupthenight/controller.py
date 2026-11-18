@@ -23,6 +23,7 @@ class MotorHardware(Protocol):
 
 class ControllerState(Enum):
     HOMING = auto()
+    MOVING_TO_REST = auto()
     RESTING = auto()
     SEQUENCING = auto()
     FAULT_PAUSE = auto()
@@ -64,8 +65,8 @@ class ArmController:
         now = time.monotonic() if now is None else now
         if self.state is ControllerState.HOMING:
             self._step_homing(now)
-        elif self.state is ControllerState.RESTING:
-            self._step_resting(now)
+        elif self.state is ControllerState.MOVING_TO_REST:
+            self._step_moving_to_rest(now)
         elif self.state is ControllerState.SEQUENCING:
             self._step_sequencing(now)
         elif self.state is ControllerState.FAULT_PAUSE:
@@ -110,14 +111,14 @@ class ArmController:
                 )
 
         if len(self._homed) == len(ARM_NAMES):
-            self._begin_resting(now)
+            self._begin_move_to_rest(now)
 
-    def _begin_resting(self, now: float) -> None:
-        self.state = ControllerState.RESTING
+    def _begin_move_to_rest(self, now: float) -> None:
+        self.state = ControllerState.MOVING_TO_REST
         self._rest_started = now
         self._rested.clear()
 
-    def _step_resting(self, now: float) -> None:
+    def _step_moving_to_rest(self, now: float) -> None:
         assert self._rest_started is not None
         for arm in ARM_NAMES:
             if arm in self._rested:
@@ -132,7 +133,7 @@ class ArmController:
                 )
 
         if len(self._rested) == len(ARM_NAMES):
-            self._begin_preset(0, now)
+            self.state = ControllerState.RESTING
 
     def _begin_preset(self, index: int, now: float) -> None:
         self.state = ControllerState.SEQUENCING

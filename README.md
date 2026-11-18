@@ -23,7 +23,7 @@ Edit [`config/default.json`](config/default.json) before running:
 - `rest_duration_s` is the per-arm timed move from home to the straight-down rest position.
 - Each preset names its speed (`slow`, `medium`, or `fast`), then gives each arm a `direction` (`forward` or `reverse`) and `duration_s`. Both sample presets use `slow`; choose a speed for each new preset. Tune durations separately to synchronize the arms.
 - The SPARK MAX factory deadband is centered around 1500 µs. The sample `slow` offset may fall within that deadband and produce no motion; confirm the configured deadband and increase the offset if needed for your mechanism.
-- `sequence_interval_min_s` and `sequence_interval_max_s` select a random interval for each preset. The next preset starts only after both arms finish their current timed move and that interval has elapsed. Presets repeat in listed order.
+- Presets and sequence intervals are configured as described above, but startup currently parks the controller after moving to rest; presets do not start automatically.
 - Homing and switch-release timeouts stop the motors and raise an error if a switch is not reached or released. A normal-operation switch activation stops both arms, waits `fault_pause_s`, moves only triggered arms forward until their switches release, and homes both arms again.
 
 See the [Raspberry Pi GPIO wiring layout](docs/wiring.md) for physical header pin numbers and wiring notes.
@@ -91,7 +91,7 @@ Confirm each switch changes independently and returns HIGH when released before 
 
 ### First live motor test
 
-The controller does not have a motor-test mode. Starting it immediately commands **both arms to home**, then moves them forward to rest and starts cycling the presets. The sample PWM values and durations in `config/default.json` are not calibrated for your mechanism.
+The controller does not have a motor-test mode. Starting it immediately commands **both arms to home**, then moves them forward to rest and holds both at neutral. It does not start cycling presets automatically. The sample PWM values and durations in `config/default.json` are not calibrated for your mechanism.
 
 - Keep the mechanism supported, unobstructed, and clear of people. Have an accessible way to remove motor power immediately; Ctrl-C is not an emergency stop.
 - With motor power off, verify wiring, switch readings, and that both arms can move freely. For the first powered test, use conservative pulse values and short travel times in a separate config file, and test under direct supervision.
