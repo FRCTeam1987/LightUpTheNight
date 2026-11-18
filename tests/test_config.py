@@ -13,10 +13,13 @@ class ConfigTests(unittest.TestCase):
         config = load_config(project_root / "config" / "default.json")
 
         self.assertEqual(config.arms["left"].home_active_level, "LOW")
-        self.assertEqual(config.arms["left"].pwm_pin, 13)
+        self.assertEqual(config.arms["left"].pwm_pin, 18)
+        self.assertEqual(config.arms["left"].pwm_channel, 0)
         self.assertEqual(config.arms["left"].limit_pin, 27)
         self.assertEqual(config.arms["right"].pwm_pin, 19)
+        self.assertEqual(config.arms["right"].pwm_channel, 1)
         self.assertEqual(config.arms["right"].limit_pin, 22)
+        self.assertEqual(config.motion.pwm_chip, 0)
         self.assertEqual(config.motion.neutral_pulse_us, 1500)
         self.assertIsInstance(config.motion.invert_direction, bool)
         normal_motion = replace(config.motion, invert_direction=False)
@@ -46,6 +49,18 @@ class ConfigTests(unittest.TestCase):
             config = load_config(config_path)
 
         self.assertTrue(config.motion.invert_direction)
+
+    def test_rejects_pwm_pin_channel_mismatch(self) -> None:
+        project_root = Path(__file__).resolve().parents[1]
+        source = project_root / "config" / "default.json"
+        raw = json.loads(source.read_text(encoding="utf-8"))
+        raw["arms"]["left"]["pwm_channel"] = 1
+
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "config.json"
+            config_path.write_text(json.dumps(raw), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "must use PWM channel"):
+                load_config(config_path)
 
 
 if __name__ == "__main__":

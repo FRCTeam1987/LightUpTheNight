@@ -31,10 +31,11 @@ class FakeHardware:
 
 def make_config() -> AppConfig:
     arms = {
-        "left": ArmConfig(18, 23, "LOW", 1.0),
-        "right": ArmConfig(19, 24, "LOW", 2.0),
+        "left": ArmConfig(18, 0, 23, "LOW", 1.0),
+        "right": ArmConfig(19, 1, 24, "LOW", 2.0),
     }
     motion = MotionConfig(
+        pwm_chip=0,
         min_pulse_us=1000,
         max_pulse_us=2000,
         neutral_pulse_us=1500,

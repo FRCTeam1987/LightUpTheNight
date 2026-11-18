@@ -1,6 +1,6 @@
 # Light Up The Night
 
-A Python controller for two SPARK MAX motor controllers connected to Raspberry Pi GPIO. It sends servo-style PWM pulses and estimates arm travel from elapsed time; there are no position sensors other than the two home limit switches.
+A Python controller for two SPARK MAX motor controllers connected to Raspberry Pi GPIO. It sends servo-style PWM pulses using the Linux kernel PWM interface and estimates arm travel from elapsed time; there are no position sensors other than the two home limit switches.
 
 ## Hardware and safety
 
@@ -10,12 +10,13 @@ A Python controller for two SPARK MAX motor controllers connected to Raspberry P
 - The limit switches connect the Pi's 3.3 V (physical pin 17) through their normally-closed contacts to the GPIO inputs. The active-LOW setup uses internal pull-downs: the input is HIGH while the contact is closed and LOW when the switch opens. A broken wire also reads LOW and intentionally has the same response as a home-switch activation. During normal preset operation, either condition is treated as a fault and starts the stop/recovery behavior; the physical switches should not be reached during ordinary moves.
 - Never use the Pi's 5 V pin for GPIO signals; Pi GPIOs are not 5 V tolerant.
 - Timed movement is only an estimate. It is not a substitute for position feedback, physical stops, or independent emergency-stop protection.
+- Kernel PWM continues sending the last pulse if the process crashes or is forcibly killed. Graceful shutdown sends neutral first, but software cannot guarantee neutral after an abrupt failure; keep an independent way to remove motor power immediately.
 
 ## Configuration
 
 Edit [`config/default.json`](config/default.json) before running:
 
-- `arms.*.pwm_pin` and `arms.*.limit_pin` are BCM GPIO numbers and must all be unique. Current mapping: left PWM GPIO13 / limit GPIO27; right PWM GPIO19 / limit GPIO22. `gpiozero.Servo` generates the configured 50 Hz PWM pulse train on both output pins, so no additional GPIO hardware-PWM setting is needed.
+- `arms.*.pwm_pin` and `arms.*.limit_pin` are BCM GPIO numbers and must all be unique. Current mapping: left PWM GPIO18 / limit GPIO27; right PWM GPIO19 / limit GPIO22. `pwm_channel` selects the matching kernel PWM channel (0 for GPIO18, 1 for GPIO19); `motion.pwm_chip` selects the sysfs chip (0 on the verified Pi).
 - `home_active_level` selects the GPIO level that means the arm is at its limit; the current config uses active-LOW switches. The switch output reaching each Pi input must be 3.3 V-safe.
 - `motion.speed_offsets_us` defines the `slow`, `medium`, and `fast` speed levels as pulse-width offsets from neutral, in microseconds. The sample defaults are 5, 15, and 30 µs; lower offsets produce slower motion. Homing, the move to rest, and fault recovery use `slow`.
 - `motion.right_arm_speed_adjustment_us` adjusts the right arm's offset at every speed level. Positive values increase its speed; negative values reduce it. The adjustment cannot reverse direction or exceed the configured pulse range.
@@ -42,26 +43,32 @@ python3 --version
 
 ## Run on a Raspberry Pi
 
-Use Raspberry Pi OS Trixie's default Python 3.13. From the project root:
+Use Raspberry Pi OS Trixie's default Python 3.13. Install GPIO Zero for the limit switches:
 
 ```sh
 sudo apt update
-sudo apt install python3-venv python3-gpiozero python3-lgpio
-python3 -m venv .venv --system-site-packages
-. .venv/bin/activate
-python -m pip install .
+sudo apt install python3-gpiozero python3-lgpio
 ```
 
-The virtual environment uses the OS GPIO Zero/lgpio packages for Raspberry Pi hardware access. Verify the imports before proceeding:
+The project can run directly from its source checkout; no build or package install is needed for local edits to take effect. Verify the GPIO Zero import:
 
 ```sh
 python -c "import gpiozero, lgpio; print('GPIO Zero and lgpio are available')"
 ```
 
+Enable the kernel PWM overlay in `/boot/firmware/config.txt`, then reboot:
+
+```ini
+[all]
+dtoverlay=pwm-2chan
+```
+
+Verify that `/sys/class/pwm/pwmchip0/npwm` reports `2` and GPIO18/GPIO19 are in PWM alternate mode before running the application. Kernel PWM sysfs export and control usually require root or explicit sysfs permissions.
+
 Run the software tests first. They use mock hardware and do not move the arms:
 
 ```sh
-python -m unittest discover -s tests -v
+PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
 ### Check limit-switch inputs without moving motors
@@ -99,16 +106,16 @@ The controller does not have a motor-test mode. Starting it immediately commands
 - Run manually first (do not enable the systemd service yet):
 
 ```sh
-python -m lightupthenight --config config/default.json
+sudo env PYTHONPATH=src python3 -m lightupthenight --config config/default.json
 ```
 
 Press Ctrl-C to stop; the controller commands neutral before closing GPIO resources. Use the independent motor-power disconnect if anything behaves unexpectedly.
 
 ## Start at boot with systemd
 
-1. Copy the project to `/opt/light-up-the-night`, create its virtual environment, and install it as above.
+1. Copy the project source to `/opt/light-up-the-night` and install the Raspberry Pi OS `python3-gpiozero` and `python3-lgpio` packages as above. The sample unit runs directly from that source checkout.
 2. Copy the edited configuration to `/etc/lightupthenight/config.json`.
-3. Review `deploy/lightupthenight.service`; change `User`, paths, and permissions for the target Pi.
+3. Review `deploy/lightupthenight.service` and change `User` and paths for the target Pi. The service account needs permission to export and write kernel PWM sysfs channels; use a suitable permission setup or run the service as root.
 4. Install and start the service:
 
    ```sh

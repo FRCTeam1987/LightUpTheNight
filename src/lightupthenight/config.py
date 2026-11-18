@@ -17,6 +17,7 @@ Direction = Literal["forward", "reverse"]
 @dataclass(frozen=True)
 class ArmConfig:
     pwm_pin: int
+    pwm_channel: int
     limit_pin: int
     home_active_level: Literal["LOW", "HIGH"]
     rest_duration_s: float
@@ -37,6 +38,7 @@ class Preset:
 
 @dataclass(frozen=True)
 class MotionConfig:
+    pwm_chip: int
     min_pulse_us: int
     max_pulse_us: int
     neutral_pulse_us: int
@@ -148,6 +150,7 @@ def load_config(path: Path) -> AppConfig:
         for speed in SPEED_NAMES
     }
     motion = MotionConfig(
+        pwm_chip=int(_number(raw_motion, "pwm_chip", "motion", integer=True)),
         min_pulse_us=_pulse(raw_motion, "min_pulse_us", "motion"),
         max_pulse_us=_pulse(raw_motion, "max_pulse_us", "motion"),
         neutral_pulse_us=_pulse(raw_motion, "neutral_pulse_us", "motion"),
@@ -179,6 +182,8 @@ def load_config(path: Path) -> AppConfig:
     )
     if motion.min_pulse_us >= motion.max_pulse_us:
         raise ValueError("motion.min_pulse_us must be less than max_pulse_us")
+    if motion.pwm_chip < 0:
+        raise ValueError("motion.pwm_chip must be non-negative")
     if not motion.min_pulse_us <= motion.neutral_pulse_us <= motion.max_pulse_us:
         raise ValueError("motion.neutral_pulse_us must be within the pulse range")
     if any(motion.speed_offsets_us[speed] <= 0 for speed in SPEED_NAMES):
@@ -221,24 +226,53 @@ def load_config(path: Path) -> AppConfig:
 
     arms: dict[ArmName, ArmConfig] = {}
     configured_pins: set[int] = set()
+    configured_pwm_channels: set[int] = set()
+    pwm_channel_by_pin = {18: 0, 19: 1}
     for arm_name in ARM_NAMES:
         values = _object(raw_arms[arm_name], f"arms.{arm_name}")
         pwm_pin = _number(values, "pwm_pin", f"arms.{arm_name}", integer=True)
+        pwm_channel = _number(
+            values, "pwm_channel", f"arms.{arm_name}", integer=True
+        )
         limit_pin = _number(values, "limit_pin", f"arms.{arm_name}", integer=True)
-        for pin_name, pin in (("pwm_pin", pwm_pin), ("limit_pin", limit_pin)):
+        pwm_pin_number = int(pwm_pin)
+        pwm_channel_number = int(pwm_channel)
+        limit_pin_number = int(limit_pin)
+        for pin_name, pin in (
+            ("pwm_pin", pwm_pin_number),
+            ("limit_pin", limit_pin_number),
+        ):
             if not 0 <= pin <= 27:
                 raise ValueError(f"arms.{arm_name}.{pin_name} must be a BCM pin from 0 to 27")
             if pin in configured_pins:
                 raise ValueError(f"GPIO BCM pin {pin} is assigned more than once")
             configured_pins.add(pin)
+        if pwm_channel_number not in (0, 1):
+            raise ValueError(f"arms.{arm_name}.pwm_channel must be 0 or 1")
+        if pwm_channel_number in configured_pwm_channels:
+            raise ValueError(
+                f"PWM channel {pwm_channel_number} is assigned more than once"
+            )
+        expected_channel = pwm_channel_by_pin.get(pwm_pin_number)
+        if expected_channel is None:
+            raise ValueError(
+                f"arms.{arm_name}.pwm_pin must be GPIO18 or GPIO19 for kernel PWM"
+            )
+        if expected_channel != pwm_channel_number:
+            raise ValueError(
+                f"arms.{arm_name}.pwm_pin GPIO{pwm_pin} must use PWM channel "
+                f"{expected_channel!r}"
+            )
+        configured_pwm_channels.add(pwm_channel_number)
 
         home_active_level = values.get("home_active_level")
         if home_active_level not in ("LOW", "HIGH"):
             raise ValueError(f"arms.{arm_name}.home_active_level must be LOW or HIGH")
 
         arm_config = ArmConfig(
-            pwm_pin=int(pwm_pin),
-            limit_pin=int(limit_pin),
+            pwm_pin=pwm_pin_number,
+            pwm_channel=pwm_channel_number,
+            limit_pin=limit_pin_number,
             home_active_level=home_active_level,
             rest_duration_s=_positive_number(
                 values, "rest_duration_s", f"arms.{arm_name}", allow_zero=True

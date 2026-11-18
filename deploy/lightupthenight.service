@@ -6,7 +6,8 @@ After=multi-user.target
 Type=simple
 User=pi
 WorkingDirectory=/opt/light-up-the-night
-ExecStart=/opt/light-up-the-night/.venv/bin/python -m lightupthenight --config /etc/lightupthenight/config.json
+Environment=PYTHONPATH=/opt/light-up-the-night/src
+ExecStart=/usr/bin/python3 -m lightupthenight --config /etc/lightupthenight/config.json
 
 [Install]
 WantedBy=multi-user.target
