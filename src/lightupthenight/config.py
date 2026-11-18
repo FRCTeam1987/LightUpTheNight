@@ -42,6 +42,7 @@ class MotionConfig:
     neutral_pulse_us: int
     speed_offsets_us: dict[Speed, int]
     right_arm_speed_adjustment_us: int
+    invert_direction: bool
     frame_width_s: float
     homing_timeout_s: float
     fault_pause_s: float
@@ -55,6 +56,8 @@ class MotionConfig:
         if arm == "right":
             offset += self.right_arm_speed_adjustment_us
         direction_sign = 1 if direction == "forward" else -1
+        if self.invert_direction:
+            direction_sign *= -1
         return self.neutral_pulse_us + direction_sign * offset
 
 
@@ -104,6 +107,15 @@ def _pulse(values: dict[str, object], key: str, name: str) -> int:
     return int(_number(values, key, name, integer=True))
 
 
+def _boolean(
+    values: dict[str, object], key: str, name: str, *, default: bool = False
+) -> bool:
+    value = values.get(key, default)
+    if not isinstance(value, bool):
+        raise ValueError(f"{name}.{key} must be a boolean")
+    return value
+
+
 def _speed(value: object, name: str) -> Speed:
     if value == "slow":
         return "slow"
@@ -131,7 +143,7 @@ def load_config(path: Path) -> AppConfig:
     raw_speed_offsets = _object(
         raw_motion.get("speed_offsets_us"), "motion.speed_offsets_us"
     )
-    speed_offsets = {
+    speed_offsets: dict[Speed, int] = {
         speed: _pulse(raw_speed_offsets, speed, "motion.speed_offsets_us")
         for speed in SPEED_NAMES
     }
@@ -148,6 +160,7 @@ def load_config(path: Path) -> AppConfig:
                 integer=True,
             )
         ),
+        invert_direction=_boolean(raw_motion, "invert_direction", "motion"),
         frame_width_s=_positive_number(raw_motion, "frame_width_s", "motion"),
         homing_timeout_s=_positive_number(raw_motion, "homing_timeout_s", "motion"),
         fault_pause_s=_positive_number(

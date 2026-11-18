@@ -9,6 +9,7 @@
       "fast": 30
     },
     "right_arm_speed_adjustment_us": 0,
+    "invert_direction": true,
     "frame_width_s": 0.02,
     "homing_timeout_s": 20.0,
     "fault_pause_s": 1.0,

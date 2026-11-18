@@ -40,6 +40,7 @@ def make_config() -> AppConfig:
         neutral_pulse_us=1500,
         speed_offsets_us={"slow": 10, "medium": 50, "fast": 100},
         right_arm_speed_adjustment_us=10,
+        invert_direction=False,
         frame_width_s=0.02,
         homing_timeout_s=5.0,
         fault_pause_s=1.0,
