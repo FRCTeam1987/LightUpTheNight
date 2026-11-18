@@ -1,0 +1,62 @@
+{
+  "motion": {
+    "min_pulse_us": 1000,
+    "max_pulse_us": 2000,
+    "neutral_pulse_us": 1500,
+    "frame_width_s": 0.02,
+    "homing_timeout_s": 20.0,
+    "fault_pause_s": 1.0,
+    "switch_release_timeout_s": 3.0,
+    "sequence_interval_min_s": 2.0,
+    "sequence_interval_max_s": 6.0,
+    "control_period_s": 0.01
+  },
+  "arms": {
+    "left": {
+      "pwm_pin": 18,
+      "limit_pin": 23,
+      "home_active_level": "LOW",
+      "homing_reverse_pulse_us": 1350,
+      "rest_forward_pulse_us": 1650,
+      "rest_duration_s": 1.0,
+      "fault_release_pulse_us": 1650
+    },
+    "right": {
+      "pwm_pin": 19,
+      "limit_pin": 24,
+      "home_active_level": "LOW",
+      "homing_reverse_pulse_us": 1350,
+      "rest_forward_pulse_us": 1650,
+      "rest_duration_s": 1.0,
+      "fault_release_pulse_us": 1650
+    }
+  },
+  "presets": [
+    {
+      "name": "sample_forward",
+      "arms": {
+        "left": {
+          "pulse_us": 1650,
+          "duration_s": 1.0
+        },
+        "right": {
+          "pulse_us": 1670,
+          "duration_s": 1.2
+        }
+      }
+    },
+    {
+      "name": "sample_return",
+      "arms": {
+        "left": {
+          "pulse_us": 1350,
+          "duration_s": 1.1
+        },
+        "right": {
+          "pulse_us": 1330,
+          "duration_s": 0.9
+        }
+      }
+    }
+  ]
+}

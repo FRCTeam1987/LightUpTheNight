@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "light-up-the-night"
+version = "0.1.0"
+description = "Timed two-arm motor controller for Raspberry Pi"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "gpiozero>=2.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
