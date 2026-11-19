@@ -18,18 +18,38 @@ Edit [`config/default.json`](config/default.json) before running:
 
 - `arms.*.pwm_pin` and `arms.*.limit_pin` are BCM GPIO numbers and must all be unique. Current mapping: left PWM GPIO18 / limit GPIO27; right PWM GPIO19 / limit GPIO22. `pwm_channel` selects the matching kernel PWM channel (0 for GPIO18, 1 for GPIO19); `motion.pwm_chip` selects the sysfs chip (0 on the verified Pi).
 - `home_active_level` selects the GPIO level that means the arm is at its limit; the current config uses active-LOW switches. The switch output reaching each Pi input must be 3.3 V-safe.
-- `motion.speed_offsets_us` defines the `slow`, `medium`, and `fast` speed levels as pulse-width offsets from neutral, in microseconds. The sample defaults are 5, 15, and 30 Âµs; lower offsets produce slower motion. Homing, the move to rest, and fault recovery use `slow`.
+- `motion.speed_offsets_us` defines the `slow`, `medium`, and `fast` speed levels as pulse-width offsets from neutral, in microseconds. The sample defaults are 35, 60, and 90 Âµs; lower offsets produce slower motion. On the tested SPARK MAX controllers 35 Âµs moves the arms; 5 Âµs is likely inside the factory deadband. The move to rest and fault recovery use `slow`; homing uses `homing_offset_us` if set.
+- `motion.homing_offset_us` (optional) is the pulse offset used only while driving toward the home switch, so homing can be slower than the `slow` level. Omit it to home at the `slow` offset. The sample config leaves it unset, so homing uses the 35 µs `slow` offset. On the tested controllers 35 µs moves the arms while 18 µs and 28 µs did not (inside the deadband), so any value you set must stay above the SPARK MAX deadband; if the arm does not move, homing times out and you should raise it.
 - `motion.right_arm_speed_adjustment_us` adjusts the right arm's offset at every speed level. Positive values increase its speed; negative values reduce it. The adjustment cannot reverse direction or exceed the configured pulse range.
 - `motion.invert_direction` reverses the motor command direction globally while leaving neutral unchanged. Set it to `true` if the motors must run in reverse to move the arms in their configured forward direction. This applies to preset movement, homing, rest, and fault recovery.
 - `rest_duration_s` is the per-arm timed move from home to the straight-down rest position.
 - Each preset names its speed (`slow`, `medium`, or `fast`), then gives each arm a `direction` (`forward` or `reverse`) and `duration_s`. Both sample presets use `slow`; choose a speed for each new preset. Tune durations separately to synchronize the arms.
-- The SPARK MAX factory deadband is centered around 1500 Âµs. The sample `slow` offset may fall within that deadband and produce no motion; confirm the configured deadband and increase the offset if needed for your mechanism.
-- Presets and sequence intervals are configured as described above, but startup currently parks the controller after moving to rest; presets do not start automatically.
+- The SPARK MAX factory deadband is centered around 1500 Âµs. Offsets that fall within that deadband produce no motion; confirm the configured deadband and adjust the offsets for your mechanism.
+- Presets and sequence intervals are configured as described above, but they never start automatically. Without a `gait` section the controller parks at rest after homing; with one, it runs the walking gait.
+- `gait` (optional) enables the walking-gait loop described in [Walking gait](#walking-gait).
 - Homing and switch-release timeouts stop the motors and raise an error if a switch is not reached or released. A normal-operation switch activation stops both arms, waits `fault_pause_s`, moves only triggered arms forward until their switches release, and homes both arms again.
 
 See the [Raspberry Pi GPIO wiring layout](docs/wiring.md) for physical header pin numbers and wiring notes.
 
 The sample values are illustrative only; confirm actual speed, direction, and run time on the mechanism before unattended operation.
+
+## Walking gait
+
+When `config/default.json` has a `gait` section, the controller runs a perpetual walking-gait loop once homing and the move to rest finish. Without it, the controller parks at rest.
+
+- **Home is the rear extreme of the arm swing.** The limit switch marks the back of the swing. **Rest (arm straight down) is the middle of the swing**, reached by the timed `rest_duration_s` move forward from home.
+- **The arms are always opposite.** From rest, the left arm swings forward and the right arm swings back for a half swing out to the extremes. After that each full swing reverses both arms, so when one arm is at the front extreme the other is at the rear.
+- **Slow speed only.** The gait always uses the `slow` speed level (`motion.speed_offsets_us.slow`).
+- **Re-homing cancels drift.** Timing is open loop, so after `gait.rehome_every_cycles` full cycles the controller re-homes both arms, moves back to rest, and resumes the gait. Set it to 0 to disable.
+- **Faults:** a limit-switch trip during the gait stops both arms and uses the normal fault recovery (pause, back off, re-home), then the gait restarts from rest.
+
+| Setting | Meaning |
+| --- | --- |
+| `gait.swing_duration_s` | Time for one full rear-to-front swing at slow speed. The first leg after rest is half of it. |
+| `gait.turnaround_pause_s` | Time both arms hold at neutral at each end of a swing (0 for none). |
+| `gait.rehome_every_cycles` | Full cycles between re-homes (0 disables). |
+
+Tune `swing_duration_s` on the mechanism, starting small. The rear extreme must stop short of the home switch, so the half swing from rest must be shorter than the rest travel. Compare against `rest_duration_s` at the same slow speed. Increase the duration gradually while watching the arms. The sample 1.0 s swing is a conservative starting point, not a calibrated value.
 
 ## Python versions
 
@@ -98,7 +118,7 @@ Confirm each switch changes independently and returns HIGH when released before 
 
 ### First live motor test
 
-The controller does not have a motor-test mode. Starting it immediately commands **both arms to home**, then moves them forward to rest and holds both at neutral. It does not start cycling presets automatically. The sample PWM values and durations in `config/default.json` are not calibrated for your mechanism.
+The controller does not have a motor-test mode. Starting it immediately commands **both arms to home**, then moves them forward to rest. With no `gait` section it then holds both at neutral; with the default `gait` section it immediately starts the perpetual walking gait (see [Walking gait](#walking-gait)). Presets never start automatically. The sample PWM values and durations in `config/default.json` are not calibrated for your mechanism.
 
 - Keep the mechanism supported, unobstructed, and clear of people. Have an accessible way to remove motor power immediately; Ctrl-C is not an emergency stop.
 - With motor power off, verify wiring, switch readings, and that both arms can move freely. For the first powered test, use conservative pulse values and short travel times in a separate config file, and test under direct supervision.
@@ -110,6 +130,16 @@ sudo env PYTHONPATH=src python3 -m lightupthenight --config config/default.json
 ```
 
 Press Ctrl-C to stop; the controller commands neutral before closing GPIO resources. Use the independent motor-power disconnect if anything behaves unexpectedly.
+
+### Check the speed levels
+
+`scripts/speed_check.py` drives both arms forward and then in reverse at each of `slow`, `medium`, and `fast`, and reads each PWM channel's `duty_cycle` back from sysfs to confirm the commanded pulse width is really being output. Each arm reacts only to its own home switch: an arm driving toward home stops when its own switch trips while the other keeps going, and a tripped switch never blocks a forward move (which leaves the switch). Ctrl-C stops both arms. Start with the arms near rest and clear of obstructions:
+
+```sh
+sudo env PYTHONPATH=src python3 scripts/speed_check.py --config config/default.json
+```
+
+It ends with `PASS: all pulses matched` when every pulse was as expected. It checks the output, not the motion, so also confirm by eye that each speed is faster than the last and that forward and reverse go in opposite directions.
 
 ## Start at boot with systemd
 
@@ -128,7 +158,7 @@ Check status and logs with `systemctl status lightupthenight.service` and `journ
 
 ## Tests
 
-Run the hardware-independent controller tests with:
+Run the hardware-independent controller and config tests (including the gait and speed-level tests) with:
 
 ```sh
 python3 -m unittest discover -s tests -v

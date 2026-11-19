@@ -52,6 +52,19 @@ class MotionConfig:
     sequence_interval_min_s: float
     sequence_interval_max_s: float
     control_period_s: float
+    homing_offset_us: int | None = None  # None: use the slow speed offset
+
+    def homing_pulse_for(self, arm: ArmName) -> int:
+        """Pulse that drives an arm toward its home switch."""
+        offset = (
+            self.speed_offsets_us["slow"]
+            if self.homing_offset_us is None
+            else self.homing_offset_us
+        )
+        if arm == "right":
+            offset += self.right_arm_speed_adjustment_us
+        direction_sign = 1 if self.invert_direction else -1
+        return self.neutral_pulse_us + direction_sign * offset
 
     def pulse_for(self, arm: ArmName, direction: Direction, speed: Speed) -> int:
         offset = self.speed_offsets_us[speed]
@@ -64,10 +77,26 @@ class MotionConfig:
 
 
 @dataclass(frozen=True)
+class GaitConfig:
+    """Walking-gait loop: the arms swing in opposition about the rest position.
+
+    Home is the rear extreme of the swing and rest (arm straight down) is the
+    middle, so the gait starts from rest with the left arm swinging forward and
+    the right arm swinging back, then alternates full swings forever. The gait
+    always runs at the slow speed level.
+    """
+
+    swing_duration_s: float  # time for one full rear-to-front swing at slow speed
+    turnaround_pause_s: float  # hold at neutral at each end of a swing
+    rehome_every_cycles: int  # 0 disables periodic re-homing
+
+
+@dataclass(frozen=True)
 class AppConfig:
     arms: dict[ArmName, ArmConfig]
     motion: MotionConfig
     presets: tuple[Preset, ...]
+    gait: GaitConfig | None = None
 
 
 def _object(value: object, name: str) -> dict[str, object]:
@@ -179,7 +208,35 @@ def load_config(path: Path) -> AppConfig:
             raw_motion, "sequence_interval_max_s", "motion", allow_zero=True
         ),
         control_period_s=_positive_number(raw_motion, "control_period_s", "motion"),
+        homing_offset_us=(
+            _pulse(raw_motion, "homing_offset_us", "motion")
+            if "homing_offset_us" in raw_motion
+            else None
+        ),
     )
+    if motion.homing_offset_us is not None:
+        if motion.homing_offset_us <= 0:
+            raise ValueError("motion.homing_offset_us must be positive")
+        homing_offsets = {
+            "left": motion.homing_offset_us,
+            "right": motion.homing_offset_us + motion.right_arm_speed_adjustment_us,
+        }
+        if homing_offsets["right"] <= 0:
+            raise ValueError(
+                "motion.right_arm_speed_adjustment_us must not reverse the "
+                "right arm direction during homing"
+            )
+        for arm_name, offset in homing_offsets.items():
+            _validate_pulse(
+                motion.neutral_pulse_us + offset,
+                motion,
+                f"motion.homing_{arm_name}",
+            )
+            _validate_pulse(
+                motion.neutral_pulse_us - offset,
+                motion,
+                f"motion.homing_{arm_name}",
+            )
     if motion.min_pulse_us >= motion.max_pulse_us:
         raise ValueError("motion.min_pulse_us must be less than max_pulse_us")
     if motion.pwm_chip < 0:
@@ -317,7 +374,23 @@ def load_config(path: Path) -> AppConfig:
             )
         presets.append(Preset(name=name, speed=speed, arms=commands))
 
-    return AppConfig(arms=arms, motion=motion, presets=tuple(presets))
+    gait: GaitConfig | None = None
+    if "gait" in raw:
+        raw_gait = _object(raw["gait"], "gait")
+        rehome_every_cycles = int(
+            _number(raw_gait, "rehome_every_cycles", "gait", integer=True)
+        )
+        if rehome_every_cycles < 0:
+            raise ValueError("gait.rehome_every_cycles must be non-negative")
+        gait = GaitConfig(
+            swing_duration_s=_positive_number(raw_gait, "swing_duration_s", "gait"),
+            turnaround_pause_s=_positive_number(
+                raw_gait, "turnaround_pause_s", "gait", allow_zero=True
+            ),
+            rehome_every_cycles=rehome_every_cycles,
+        )
+
+    return AppConfig(arms=arms, motion=motion, presets=tuple(presets), gait=gait)
 
 
 def _validate_pulse(pulse_us: int, motion: MotionConfig, name: str) -> None:

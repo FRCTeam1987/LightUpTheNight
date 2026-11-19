@@ -26,9 +26,22 @@ class ControllerState(Enum):
     MOVING_TO_REST = auto()
     RESTING = auto()
     SEQUENCING = auto()
+    GAIT = auto()
     FAULT_PAUSE = auto()
     FAULT_RELEASE = auto()
     FAILED = auto()
+
+
+# Each gait leg: (left direction, right direction, fraction of swing_duration_s).
+# The gait starts at rest (arms straight down, mid-swing): the first leg is a
+# half swing out to the extremes, then full swings alternate. "forward" swings
+# the arm forward; home (the limit switch) is the rear extreme.
+_GAIT_LEGS = {
+    "start": ("forward", "reverse", 0.5),
+    "a": ("reverse", "forward", 1.0),
+    "b": ("forward", "reverse", 1.0),
+}
+_GAIT_NEXT_LEG = {"start": "a", "a": "b", "b": "a"}
 
 
 class ArmController:
@@ -54,6 +67,9 @@ class ArmController:
         self._fault_pause_until: float | None = None
         self._release_targets: set[ArmName] = set()
         self._release_started: dict[ArmName, float] = {}
+        self._gait_leg = "start"
+        self._gait_leg_started = 0.0
+        self._gait_cycles = 0
 
     def start(self, now: float | None = None) -> None:
         now = time.monotonic() if now is None else now
@@ -69,6 +85,8 @@ class ArmController:
             self._step_moving_to_rest(now)
         elif self.state is ControllerState.SEQUENCING:
             self._step_sequencing(now)
+        elif self.state is ControllerState.GAIT:
+            self._step_gait(now)
         elif self.state is ControllerState.FAULT_PAUSE:
             self._step_fault_pause(now)
         elif self.state is ControllerState.FAULT_RELEASE:
@@ -86,6 +104,7 @@ class ArmController:
         self._stop_all()
 
     def _begin_homing(self, now: float) -> None:
+        logger.info("Homing: driving both arms toward their own home switches")
         self.state = ControllerState.HOMING
         self._homing_started = {arm: now for arm in ARM_NAMES}
         self._homed.clear()
@@ -103,14 +122,20 @@ class ArmController:
             if self.hardware.is_home(arm):
                 self.hardware.set_pulse_us(arm, self.config.motion.neutral_pulse_us)
                 self._homed.add(arm)
+                logger.info(
+                    "Homing: %s arm reached its home switch after %.2f s",
+                    arm,
+                    now - self._homing_started[arm],
+                )
             elif now - self._homing_started[arm] >= self.config.motion.homing_timeout_s:
                 self._fail(f"{arm} arm did not reach its home switch before timeout")
             else:
                 self.hardware.set_pulse_us(
-                    arm, self.config.motion.pulse_for(arm, "reverse", "slow")
+                    arm, self.config.motion.homing_pulse_for(arm)
                 )
 
         if len(self._homed) == len(ARM_NAMES):
+            logger.info("Homing complete: both arms at home; moving to rest")
             self._begin_move_to_rest(now)
 
     def _begin_move_to_rest(self, now: float) -> None:
@@ -133,7 +158,51 @@ class ArmController:
                 )
 
         if len(self._rested) == len(ARM_NAMES):
-            self.state = ControllerState.RESTING
+            if self.config.gait is not None:
+                self._begin_gait(now)
+            else:
+                self.state = ControllerState.RESTING
+
+    def _begin_gait(self, now: float) -> None:
+        self.state = ControllerState.GAIT
+        self._gait_leg = "start"
+        self._gait_leg_started = now
+        self._gait_cycles = 0
+
+    def _step_gait(self, now: float) -> None:
+        triggered = {arm for arm in ARM_NAMES if self.hardware.is_home(arm)}
+        if triggered:
+            self._begin_fault(now, triggered)
+            return
+
+        gait = self.config.gait
+        assert gait is not None
+        left_direction, right_direction, fraction = _GAIT_LEGS[self._gait_leg]
+        leg_duration = gait.swing_duration_s * fraction
+        elapsed = now - self._gait_leg_started
+        if elapsed < leg_duration:
+            self.hardware.set_pulse_us(
+                "left", self.config.motion.pulse_for("left", left_direction, "slow")
+            )
+            self.hardware.set_pulse_us(
+                "right",
+                self.config.motion.pulse_for("right", right_direction, "slow"),
+            )
+            return
+
+        self._stop_all()
+        if elapsed < leg_duration + gait.turnaround_pause_s:
+            return
+
+        if self._gait_leg == "b":
+            self._gait_cycles += 1
+            if gait.rehome_every_cycles and self._gait_cycles >= gait.rehome_every_cycles:
+                logger.info("Gait re-homing after %d cycles", self._gait_cycles)
+                self._begin_homing(now)
+                self._step_homing(now)
+                return
+        self._gait_leg = _GAIT_NEXT_LEG[self._gait_leg]
+        self._gait_leg_started = now
 
     def _begin_preset(self, index: int, now: float) -> None:
         self.state = ControllerState.SEQUENCING
