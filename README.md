@@ -49,7 +49,7 @@ When `config/default.json` has a `gait` section, the controller runs a perpetual
 | `gait.turnaround_pause_s` | Time both arms hold at neutral at each end of a swing (0 for none). |
 | `gait.rehome_every_cycles` | Full cycles between re-homes (0 disables). |
 
-Tune `swing_duration_s` on the mechanism, starting small. The rear extreme must stop short of the home switch, so the half swing from rest must be shorter than the rest travel. Compare against `rest_duration_s` at the same slow speed. Increase the duration gradually while watching the arms. The sample 1.0 s swing is a conservative starting point, not a calibrated value.
+Tune `swing_duration_s` on the mechanism, starting small. The rear extreme must stop short of the home switch, so the half swing from rest must be shorter than the rest travel. Compare against `rest_duration_s` at the same slow speed. Increase the duration gradually while watching the arms. The sample 0.6 s swing (about a quarter turn at slow speed, with re-homing every 10 cycles) was chosen from a first hardware run at 1.0 s, where the rear extreme stayed clear of the switch but drifted away from it over 10 cycles; it is not a calibrated value.
 
 ## Python versions
 
