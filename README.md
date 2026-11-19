@@ -36,18 +36,18 @@ The sample values are illustrative only; confirm actual speed, direction, and ru
 
 When `config/default.json` has a `gait` section, the controller starts the walking-gait loop immediately. It runs for `gait.active_duration_s`, commands both motors neutral for `gait.pause_duration_s`, then restarts the gait. The sample timing is 30 seconds on and 60 seconds off. Without a gait section, the controller leaves both motors neutral.
 
-- **The arms are always opposite.** The left arm swings forward and the right arm swings back for a half swing, then both reverse for alternating full swings.
-- **Slow speed only.** The gait always uses the `slow` speed level (`motion.speed_offsets_us.slow`).
+- **Startup swing:** both arms first move in the B direction at medium speed for half of `swing_duration_s`, moving them away from the low point. The A direction then swings them back across each other.
+- **Ramped direction phases:** A runs slow for 0.5 seconds, medium for 0.5 seconds, then fast for 0.5 seconds. B repeats the same speed ramp in the opposite direction. Both arms move in opposite directions throughout.
 - **Limit switches are ignored.** Activating a switch does not stop or change the gait. The arms swing under their own weight while the motors are neutral during the off interval.
 
 | Setting | Meaning |
 | --- | --- |
-| `gait.swing_duration_s` | Time for one full swing at slow speed. The first leg is half of it. |
-| `gait.turnaround_pause_s` | Time both arms hold at neutral at each end of a swing (0 for none). |
+| `gait.swing_duration_s` | Sets the startup B-direction segment length to half this value. |
+| `gait.turnaround_pause_s` | Time both arms hold at neutral between direction phases (0 for none). |
 | `gait.active_duration_s` | Time the gait runs before both motors are commanded neutral. |
 | `gait.pause_duration_s` | Time both motors remain neutral before the gait restarts. |
 
-Tune `swing_duration_s` on the mechanism, starting small. Since the limit switches are ignored by the gait controller, make sure the physical mechanism can safely tolerate the full swing and provide independent over-travel protection. Retune the swing duration and speed offsets whenever the arms or their load change (see [Hardware and safety](#hardware-and-safety)).
+Tune the speed offsets and startup `swing_duration_s` on the mechanism. Since the limit switches are ignored by the gait controller, make sure the physical mechanism can safely tolerate the full swing and provide independent over-travel protection. Retune whenever the arms or their load change (see [Hardware and safety](#hardware-and-safety)).
 
 ## Python versions
 

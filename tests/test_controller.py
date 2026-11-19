@@ -63,12 +63,12 @@ class GaitTests(unittest.TestCase):
         controller.start(now=0)
         return controller, hardware
 
-    def test_start_enters_gait_without_homing_or_rest_motion(self) -> None:
+    def test_start_swings_in_b_direction_at_medium_power(self) -> None:
         controller, hardware = self.make()
         self.assertEqual(controller.state, ControllerState.GAIT)
         self.assertEqual(hardware.pulses, {"left": 1500, "right": 1500})
         controller.step(now=0.1)
-        self.assertEqual(hardware.pulses, {"left": 1510, "right": 1480})
+        self.assertEqual(hardware.pulses, {"left": 1550, "right": 1440})
 
     def test_gait_ignores_limit_switches(self) -> None:
         controller, hardware = self.make()
@@ -76,18 +76,29 @@ class GaitTests(unittest.TestCase):
         hardware.switches = {"left": True, "right": True}
         controller.step(now=0.2)
         self.assertEqual(controller.state, ControllerState.GAIT)
-        self.assertEqual(hardware.pulses, {"left": 1510, "right": 1480})
+        self.assertEqual(hardware.pulses, {"left": 1550, "right": 1440})
 
     def test_arms_swing_in_opposition_and_alternate(self) -> None:
         controller, hardware = self.make(active_duration_s=20.0)
         controller.step(now=0.1)
-        self.assertEqual(hardware.pulses, {"left": 1510, "right": 1480})
+        self.assertEqual(hardware.pulses, {"left": 1550, "right": 1440})
         controller.step(now=1.0)
         controller.step(now=1.1)
         self.assertEqual(hardware.pulses, {"left": 1490, "right": 1520})
-        controller.step(now=3.1)
-        controller.step(now=3.2)
+        controller.step(now=1.5)
+        self.assertEqual(hardware.pulses, {"left": 1450, "right": 1560})
+        controller.step(now=2.0)
+        self.assertEqual(hardware.pulses, {"left": 1400, "right": 1610})
+        controller.step(now=2.5)
+        controller.step(now=2.6)
         self.assertEqual(hardware.pulses, {"left": 1510, "right": 1480})
+        controller.step(now=3.1)
+        self.assertEqual(hardware.pulses, {"left": 1550, "right": 1440})
+        controller.step(now=3.6)
+        self.assertEqual(hardware.pulses, {"left": 1600, "right": 1390})
+        controller.step(now=4.1)
+        controller.step(now=4.2)
+        self.assertEqual(hardware.pulses, {"left": 1490, "right": 1520})
 
     def test_turnaround_pause_holds_neutral_between_swings(self) -> None:
         controller, hardware = self.make(turnaround_pause_s=0.5)
@@ -117,7 +128,7 @@ class GaitTests(unittest.TestCase):
         self.assertEqual(hardware.pulses, {"left": 1500, "right": 1500})
         controller.step(now=90.0)
         self.assertEqual(controller.state, ControllerState.GAIT)
-        self.assertEqual(hardware.pulses, {"left": 1510, "right": 1480})
+        self.assertEqual(hardware.pulses, {"left": 1550, "right": 1440})
 
     def test_pause_restarts_active_timer(self) -> None:
         controller, hardware = self.make(active_duration_s=2.0, pause_duration_s=3.0)

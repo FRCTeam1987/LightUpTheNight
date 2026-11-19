@@ -5,9 +5,9 @@
     "max_pulse_us": 2000,
     "neutral_pulse_us": 1500,
     "speed_offsets_us": {
-      "slow": 45,
-      "medium": 60,
-      "fast": 90
+      "slow": 25,
+      "medium": 38,
+      "fast": 45
     },
     "right_arm_speed_adjustment_us": 0,
     "invert_direction": true,

@@ -63,7 +63,7 @@ class MotionConfig:
 class GaitConfig:
     """Alternating gait timing with a neutral pause between active periods."""
 
-    swing_duration_s: float  # time for one full rear-to-front swing at slow speed
+    swing_duration_s: float  # scales the startup half-swing duration
     turnaround_pause_s: float  # hold at neutral at each end of a swing
     active_duration_s: float
     pause_duration_s: float

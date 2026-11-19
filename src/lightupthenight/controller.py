@@ -7,7 +7,7 @@ import time
 from enum import Enum, auto
 from typing import Protocol
 
-from .config import ARM_NAMES, ArmName, AppConfig
+from .config import ARM_NAMES, ArmName, AppConfig, Speed
 
 logger = logging.getLogger(__name__)
 
@@ -24,13 +24,14 @@ class ControllerState(Enum):
     GAIT_PAUSE = auto()
 
 
-# Each gait leg: (left direction, right direction, fraction of swing_duration_s).
-_GAIT_LEGS = {
-    "start": ("forward", "reverse", 0.5),
-    "a": ("reverse", "forward", 1.0),
-    "b": ("forward", "reverse", 1.0),
+_GAIT_DIRECTIONS = {
+    "start": ("forward", "reverse"),
+    "a": ("reverse", "forward"),
+    "b": ("forward", "reverse"),
 }
 _GAIT_NEXT_LEG = {"start": "a", "a": "b", "b": "a"}
+_RAMP_SPEEDS: tuple[Speed, Speed, Speed] = ("slow", "medium", "fast")
+_RAMP_STAGE_DURATION_S = 0.5
 
 
 class ArmController:
@@ -85,16 +86,25 @@ class ArmController:
             )
             return
 
-        left_direction, right_direction, fraction = _GAIT_LEGS[self._gait_leg]
-        leg_duration = gait.swing_duration_s * fraction
+        left_direction, right_direction = _GAIT_DIRECTIONS[self._gait_leg]
+        leg_duration = (
+            gait.swing_duration_s * 0.5
+            if self._gait_leg == "start"
+            else len(_RAMP_SPEEDS) * _RAMP_STAGE_DURATION_S
+        )
         elapsed = now - self._gait_leg_started
         if elapsed < leg_duration:
+            speed: Speed = (
+                "medium"
+                if self._gait_leg == "start"
+                else _RAMP_SPEEDS[int(elapsed // _RAMP_STAGE_DURATION_S)]
+            )
             self.hardware.set_pulse_us(
-                "left", self.config.motion.pulse_for("left", left_direction, "slow")
+                "left", self.config.motion.pulse_for("left", left_direction, speed)
             )
             self.hardware.set_pulse_us(
                 "right",
-                self.config.motion.pulse_for("right", right_direction, "slow"),
+                self.config.motion.pulse_for("right", right_direction, speed),
             )
             return
 
