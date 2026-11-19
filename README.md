@@ -143,10 +143,12 @@ It ends with `PASS: all pulses matched` when every pulse was as expected. It che
 
 ## Start at boot with systemd
 
-1. Copy the project source to `/opt/light-up-the-night` and install the Raspberry Pi OS `python3-gpiozero` and `python3-lgpio` packages as above. The sample unit runs directly from that source checkout.
-2. Copy the edited configuration to `/etc/lightupthenight/config.json`.
-3. Review `deploy/lightupthenight.service` and change `User` and paths for the target Pi. The service account needs permission to export and write kernel PWM sysfs channels; use a suitable permission setup or run the service as root.
-4. Install and start the service:
+The service runs the controller on every boot: it **homes both arms, moves them to rest, and then runs the walking gait forever**. It uses the `gait` section of `config/default.json`. **Once enabled, the arms move on their own at every power-up**, so keep people and obstructions clear and keep an independent way to cut motor power.
+
+The unit runs as root (kernel PWM sysfs needs it) from the checkout at `/home/broncobots/LightUpTheNight`, with config `config/default.json` from that checkout. Edit `deploy/lightupthenight.service` if your user or paths differ.
+
+1. Install the Raspberry Pi OS `python3-gpiozero` and `python3-lgpio` packages and enable the `pwm-2chan` overlay as above, then confirm the manual run works first.
+2. Install and start the service:
 
    ```sh
    sudo install -m 0644 deploy/lightupthenight.service /etc/systemd/system/lightupthenight.service
@@ -154,7 +156,14 @@ It ends with `PASS: all pulses matched` when every pulse was as expected. It che
    sudo systemctl enable --now lightupthenight.service
    ```
 
-Check status and logs with `systemctl status lightupthenight.service` and `journalctl -u lightupthenight.service`. The unit does not automatically restart after an error, so inspect the mechanism before manually restarting it.
+Check status and logs with `systemctl status lightupthenight.service` and `journalctl -u lightupthenight.service -f`. After changing the code or `config/default.json`, copy the files over and run `sudo systemctl restart lightupthenight.service`. To stop it, run `sudo systemctl stop lightupthenight.service`; to keep it from starting at boot, run `sudo systemctl disable lightupthenight.service`.
+
+Behavior to know about:
+
+- **Clean stop:** `systemctl stop` sends SIGTERM, which the controller handles like Ctrl-C: it commands neutral before closing. A crash or `kill -9` cannot do that, and kernel PWM keeps sending its last pulse, so the unit releases the PWM channels before each start.
+- **Faults are retried, a few times.** A fault that exits the process (for example a homing timeout because an arm is jammed or a switch is broken) restarts the service after 10 s, which homes again. After 5 failures in 10 minutes systemd stops retrying and leaves the service failed, so inspect the mechanism, then run `sudo systemctl reset-failed lightupthenight.service` and start it again.
+- **Switch trips during the gait** are handled inside the controller (stop, back off, re-home, resume) and are not failures.
+- **Boot order:** the service starts early in boot. If the arms' motor power comes on later than the Pi, the first homing may time out and the service will retry.
 
 ## Tests
 

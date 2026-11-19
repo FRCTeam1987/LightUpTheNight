@@ -1,13 +1,27 @@
 [Unit]
-Description=Light Up The Night arm controller
-After=multi-user.target
+Description=Light Up The Night arm controller (home, then walking gait forever)
+After=sysinit.target
+# Stop retrying after repeated failures so a jammed mechanism is not driven again and again.
+StartLimitIntervalSec=600
+StartLimitBurst=5
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/opt/light-up-the-night
-Environment=PYTHONPATH=/opt/light-up-the-night/src
-ExecStart=/usr/bin/python3 -m lightupthenight --config /etc/lightupthenight/config.json
+# Kernel PWM sysfs needs root.
+User=root
+WorkingDirectory=/home/broncobots/LightUpTheNight
+Environment=PYTHONPATH=/home/broncobots/LightUpTheNight/src
+Environment=PYTHONUNBUFFERED=1
+# Release PWM channels a crashed run may have left exported (this also stops the stale pulse).
+ExecStartPre=-/bin/sh -c 'echo 0 > /sys/class/pwm/pwmchip0/unexport'
+ExecStartPre=-/bin/sh -c 'echo 1 > /sys/class/pwm/pwmchip0/unexport'
+ExecStart=/usr/bin/python3 -m lightupthenight --config /home/broncobots/LightUpTheNight/config/default.json
+# SIGTERM is handled: the controller commands neutral before exiting.
+KillSignal=SIGTERM
+TimeoutStopSec=10
+# A fault (for example a homing timeout) exits non-zero and is retried, up to StartLimitBurst.
+Restart=on-failure
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
