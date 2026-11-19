@@ -5,16 +5,13 @@
     "max_pulse_us": 2000,
     "neutral_pulse_us": 1500,
     "speed_offsets_us": {
-      "slow": 35,
+      "slow": 45,
       "medium": 60,
       "fast": 90
     },
     "right_arm_speed_adjustment_us": 0,
     "invert_direction": true,
     "frame_width_s": 0.02,
-    "homing_timeout_s": 20.0,
-    "fault_pause_s": 1.0,
-    "switch_release_timeout_s": 3.0,
     "sequence_interval_min_s": 2.0,
     "sequence_interval_max_s": 6.0,
     "control_period_s": 0.01
@@ -24,15 +21,13 @@
       "pwm_pin": 18,
       "pwm_channel": 0,
       "limit_pin": 27,
-      "home_active_level": "LOW",
-      "rest_duration_s": 1.0
+      "home_active_level": "LOW"
     },
     "right": {
       "pwm_pin": 19,
       "pwm_channel": 1,
       "limit_pin": 22,
-      "home_active_level": "LOW",
-      "rest_duration_s": 1.0
+      "home_active_level": "LOW"
     }
   },
   "presets": [
@@ -68,6 +63,7 @@
   "gait": {
     "swing_duration_s": 0.6,
     "turnaround_pause_s": 0.0,
-    "rehome_every_cycles": 10
+    "active_duration_s": 30.0,
+    "pause_duration_s": 60.0
   }
 }

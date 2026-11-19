@@ -1,5 +1,5 @@
 [Unit]
-Description=Light Up The Night arm controller (home, then walking gait forever)
+Description=Light Up The Night arm controller (cycling walking gait)
 After=sysinit.target
 # Stop retrying after repeated failures so a jammed mechanism is not driven again and again.
 StartLimitIntervalSec=600
@@ -19,7 +19,7 @@ ExecStart=/usr/bin/python3 -m lightupthenight --config /home/broncobots/LightUpT
 # SIGTERM is handled: the controller commands neutral before exiting.
 KillSignal=SIGTERM
 TimeoutStopSec=10
-# A fault (for example a homing timeout) exits non-zero and is retried, up to StartLimitBurst.
+# A fatal controller error exits non-zero and is retried, up to StartLimitBurst.
 Restart=on-failure
 RestartSec=10
 

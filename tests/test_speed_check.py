@@ -55,31 +55,48 @@ class SpeedCheckTests(unittest.TestCase):
         self.assertTrue(matched)
         self.assertEqual(reached, [])
         for arm in ARM_NAMES:
-            self.assertIn(1465, self.driven[arm])  # inverted: forward = 1500 - 35
+            expected = self.config.motion.pulse_for(arm, "forward", "slow")
+            self.assertIn(expected, self.driven[arm])
 
     def test_reverse_stops_only_the_arm_whose_switch_trips(self) -> None:
         self.hardware.home["right"] = True
         matched, reached = self.run_move("reverse")
         self.assertEqual(reached, ["right"])
-        self.assertNotIn(1535, self.driven["right"])  # never driven toward home
-        self.assertIn(1535, self.driven["left"])  # left kept going
+        expected = self.config.motion.pulse_for("left", "reverse", "slow")
+        self.assertNotIn(
+            self.config.motion.pulse_for("right", "reverse", "slow"),
+            self.driven["right"],
+        )
+        self.assertIn(expected, self.driven["left"])
         self.assertEqual(self.hardware.pulses, {"left": 1500, "right": 1500})
 
     def test_left_trip_does_not_stop_right(self) -> None:
         self.hardware.home["left"] = True
         _, reached = self.run_move("reverse")
         self.assertEqual(reached, ["left"])
-        self.assertIn(1535, self.driven["right"])
-        self.assertNotIn(1535, self.driven["left"])
+        self.assertIn(
+            self.config.motion.pulse_for("right", "reverse", "slow"),
+            self.driven["right"],
+        )
+        self.assertNotIn(
+            self.config.motion.pulse_for("left", "reverse", "slow"),
+            self.driven["left"],
+        )
 
     def test_pulse_widths_for_every_speed_both_directions(self) -> None:
-        for speed, offset in {"slow": 35, "medium": 60, "fast": 90}.items():
+        for speed in self.config.motion.speed_offsets_us:
             self.driven = {arm: [] for arm in ARM_NAMES}
             self.run_move("forward", speed)
             self.run_move("reverse", speed)
             for arm in ARM_NAMES:
-                self.assertIn(1500 - offset, self.driven[arm])
-                self.assertIn(1500 + offset, self.driven[arm])
+                self.assertIn(
+                    self.config.motion.pulse_for(arm, "forward", speed),
+                    self.driven[arm],
+                )
+                self.assertIn(
+                    self.config.motion.pulse_for(arm, "reverse", speed),
+                    self.driven[arm],
+                )
 
 
 if __name__ == "__main__":
